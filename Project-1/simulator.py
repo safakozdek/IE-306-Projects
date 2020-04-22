@@ -19,6 +19,9 @@ MAX_TOTAL_WAITING = 0
 MAX_TOTAL_SYSTEM_TIME = 0
 AVG_WAITING_PEOPLE = 0
 AVG_UNSATISFIED_PEOPLE = 0
+#--------
+NUMBER_OF_CALLS = 10
+END_TIME = 0
 
 """
 Arrivals:
@@ -71,8 +74,29 @@ class Call():
         TODO: Burada bütün call processi olacak.
         :return:
         """
-        pass
 
+        operator_random = random.randint(0, 9)
+        fault_random = random.randint(0,9)
+
+        if fault_random == 0:
+            return
+        elif operator_random < 3:  # 0-1-2 -- %30
+            with operator1.request() as req:
+                yield req
+        else:
+            with operator2.request() as req:
+                yield req
+
+
+
+        if self.id == 10: # only for test
+            yield self.env.process(self.end())
+
+    def end(self):
+        global END_TIME
+        END_TIME = self.env.now
+        self.action.interrupt()
+        yield self.env.timeout(0)
 
 
 class Break():
@@ -85,7 +109,7 @@ class Break():
         self.action = env.process(self.go_break())
 
     def go_break(self):
-        break_time = 0 # random sanırım
+        break_time = 3 # random sanırım
         with self.operator.request() as req:
             yield req # Wait for access
             yield env.timeout(break_time)
@@ -94,9 +118,11 @@ class Break():
 
 def call_generator(env, operator1, operator2):
 
-    for i in range(10):
+    for i in range(NUMBER_OF_CALLS):
         INTERARRIVAL_RATE = 6
         yield env.timeout(random.expovariate(INTERARRIVAL_RATE))
+        TAKE_RECORD_MEAN = 5
+        yield env.timeout(random.expovariate(TAKE_RECORD_MEAN))
         call = Call((i+1), env, operator1, operator2)
 
 
@@ -119,4 +145,8 @@ if __name__ == "__main__":
     env.process(call_generator(env, operator1, operator2))
     env.process(break_generator(env, operator1))
     env.process(break_generator(env, operator2))
-    env.run()
+
+    try:
+        env.run()
+    except simpy.Interrupt as interrupt:
+        print('END OF THE SIMULATION')
