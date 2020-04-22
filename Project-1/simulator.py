@@ -71,6 +71,7 @@ class Call():
         TODO: Burada bütün call processi olacak.
         :return:
         """
+        pass
 
 
 
@@ -91,16 +92,16 @@ class Break():
 
 
 
-def call_generator(env, operator):
-    """Generate new cars that arrive at the gas station."""
+def call_generator(env, operator1, operator2):
+
     for i in range(10):
         INTERARRIVAL_RATE = 6
         yield env.timeout(random.expovariate(INTERARRIVAL_RATE))
-        call = Call((i+1), env, operator)
+        call = Call((i+1), env, operator1, operator2)
 
 
 def break_generator(env, operator):
-    rate = 0
+    rate = 1
     counter = 1
     while True:
         yield env.timeout(random.expovariate(rate)) # poisson bir çeşit expovariate olarak ifade edilebiliyor olmalı
@@ -118,3 +119,4 @@ if __name__ == "__main__":
     env.process(call_generator(env, operator1, operator2))
     env.process(break_generator(env, operator1))
     env.process(break_generator(env, operator2))
+    env.run()
