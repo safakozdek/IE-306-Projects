@@ -19,7 +19,7 @@ MAX_TOTAL_WAITING = 0
 MAX_TOTAL_SYSTEM_TIME = 0
 AVG_WAITING_PEOPLE = 0
 AVG_UNSATISFIED_PEOPLE = 0
-#--------
+# --------
 NUMBER_OF_CALLS = 10
 END_TIME = 0
 
@@ -59,6 +59,7 @@ distributed according to a Poisson distribution with a mean of 8 breaks per shif
 
 """
 
+
 class Call():
 
     def __init__(self, id, env, operator1, operator2):
@@ -74,22 +75,38 @@ class Call():
         TODO: Burada bütün call processi olacak.
         :return:
         """
-
         operator_random = random.randint(0, 9)
-        fault_random = random.randint(0,9)
+        fault_random = random.randint(0, 9)
 
-        if fault_random == 0:
+        if fault_random == 0: # %10
             return
         elif operator_random < 3:  # 0-1-2 -- %30
             with operator1.request() as req:
+                q_arrival = env.now
                 yield req
+                q_waiting = env.now - q_arrival
+
+                if q_waiting < 10:  # TODO: use global variable for renege time
+                    # normal case
+                    pass
+                else:
+                    # reneging
+                    pass
         else:
             with operator2.request() as req:
+                q_arrival = env.now
                 yield req
+                q_waiting = env.now - q_arrival
 
+                if q_waiting < 10:  # TODO: use global variable for renege time
+                    # normal case
+                    pass
+                else:
+                    # reneging
+                    pass
 
+        if self.id == 10:  # only for test
 
-        if self.id == 10: # only for test
             yield self.env.process(self.end())
 
     def end(self):
@@ -109,32 +126,28 @@ class Break():
         self.action = env.process(self.go_break())
 
     def go_break(self):
-        break_time = 3 # random sanırım
+        break_time = 3  # random sanırım
         with self.operator.request() as req:
-            yield req # Wait for access
+            yield req  # Wait for access
             yield env.timeout(break_time)
 
 
-
 def call_generator(env, operator1, operator2):
-
     for i in range(NUMBER_OF_CALLS):
         INTERARRIVAL_RATE = 6
         yield env.timeout(random.expovariate(INTERARRIVAL_RATE))
         TAKE_RECORD_MEAN = 5
         yield env.timeout(random.expovariate(TAKE_RECORD_MEAN))
-        call = Call((i+1), env, operator1, operator2)
+        call = Call((i + 1), env, operator1, operator2)
 
 
 def break_generator(env, operator):
     rate = 1
     counter = 1
     while True:
-        yield env.timeout(random.expovariate(rate)) # poisson bir çeşit expovariate olarak ifade edilebiliyor olmalı
+        yield env.timeout(random.expovariate(rate))  # poisson bir çeşit expovariate olarak ifade edilebiliyor olmalı
         operator_break = Break(counter, env, operator)
         counter += 1
-
-
 
 
 if __name__ == "__main__":
