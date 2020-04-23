@@ -68,7 +68,9 @@ distributed according to a Poisson distribution with a mean of 8 breaks per shif
 
 class Call():
 
-    current_call = 0 
+    current_call = 0
+    total_call_success = 0
+    total_call_fail = 0
 
     def __init__(self, id, env, operator1, operator2):
         self.id = id
@@ -100,6 +102,7 @@ class Call():
         fault_random = random.randint(0, 9)
 
         if fault_random == 0: # %10
+            Call.total_call_fail += 1
             return
         
         if operator_random < 3:  # 0-1-2 -- %30
@@ -108,10 +111,10 @@ class Call():
                 yield req
                 q_waiting = env.now - q_arrival
 
-                if q_waiting < 10:  # TODO: use global variable for renege time
-                    # normal case
-                    pass
+                if q_waiting < 10:
+                    self.env.process(self.service(1))
                 else:
+                    # TODO: use global variable for renege time
                     # reneging
                     pass
         else:
@@ -120,20 +123,30 @@ class Call():
                 yield req
                 q_waiting = env.now - q_arrival
 
-                if q_waiting < 10:  # TODO: use global variable for renege time
-                    # normal case
-                    pass
+                if q_waiting < 10:
+                    self.env.process(self.service(2))
                 else:
+                    # TODO: use global variable for renege time
                     # reneging
                     pass
 
-        if self.id == 10:  # only for test
-            pass
-            #yield self.env.process(self.end())
+        Call.total_call_success += 1
+        #print(Call.total_call_success + Call.total_call_fail)
+        if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
+            yield self.env.process(self.end())
+
+    def service(self, operator_id:int):
+        if operator_id == 1:
+            yield env.timeout(random.lognormvariate(12,6))
+            # log
+        else:
+            yield env.timeout(random.randint(1,7))
+            # uniform
 
     def end(self):
         global END_TIME
         END_TIME = self.env.now
+        print(END_TIME)
         self.action.interrupt()
         yield self.env.timeout(0)
 
