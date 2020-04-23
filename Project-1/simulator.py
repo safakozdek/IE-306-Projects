@@ -90,6 +90,9 @@ class Call():
         
         if Call.current_call >= CALL_CAPACITY:
             # Answering system is full, drop the call.
+            Call.total_call_fail += 1
+            if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
+                yield self.env.process(self.end())
             return
         
         Call.current_call += 1
@@ -103,6 +106,8 @@ class Call():
 
         if fault_random == 0: # %10
             Call.total_call_fail += 1
+            if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
+                yield self.env.process(self.end())
             return
         
         if operator_random < 3:  # 0-1-2 -- %30
@@ -131,7 +136,7 @@ class Call():
                     pass
 
         Call.total_call_success += 1
-        #print(Call.total_call_success + Call.total_call_fail)
+
         if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
             yield self.env.process(self.end())
 
