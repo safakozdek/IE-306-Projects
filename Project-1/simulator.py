@@ -12,6 +12,7 @@ o Average number of customers leaving the system unsatisfied either due to
 incorrect routing or due to long waiting times.
 """
 
+
 SYSTEM_UTIL = 0
 OPERATORS_UTIL = 0
 AVG_TOTAL_WAITING = 0
@@ -20,8 +21,13 @@ MAX_TOTAL_SYSTEM_TIME = 0
 AVG_WAITING_PEOPLE = 0
 AVG_UNSATISFIED_PEOPLE = 0
 # --------
-NUMBER_OF_CALLS = 10
+NUMBER_OF_CALLS = 1000
+CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at the same time.
 END_TIME = 0
+
+INTERARRIVAL_RATE = 6
+TAKE_RECORD_MEAN = 5
+
 
 """
 Arrivals:
@@ -62,6 +68,8 @@ distributed according to a Poisson distribution with a mean of 8 breaks per shif
 
 class Call():
 
+    current_call = 0 
+
     def __init__(self, id, env, operator1, operator2):
         self.id = id
         self.env = env
@@ -75,12 +83,26 @@ class Call():
         TODO: Burada bütün call processi olacak.
         :return:
         """
+
+        # print("current calls:", Call.current_call)
+        
+        if Call.current_call >= CALL_CAPACITY:
+            # Answering system is full, drop the call.
+            return
+        
+        Call.current_call += 1
+
+        yield env.timeout(random.expovariate(1.0/TAKE_RECORD_MEAN))
+
+        Call.current_call -= 1
+
         operator_random = random.randint(0, 9)
         fault_random = random.randint(0, 9)
 
         if fault_random == 0: # %10
             return
-        elif operator_random < 3:  # 0-1-2 -- %30
+        
+        if operator_random < 3:  # 0-1-2 -- %30
             with operator1.request() as req:
                 q_arrival = env.now
                 yield req
@@ -106,8 +128,8 @@ class Call():
                     pass
 
         if self.id == 10:  # only for test
-
-            yield self.env.process(self.end())
+            pass
+            #yield self.env.process(self.end())
 
     def end(self):
         global END_TIME
@@ -133,11 +155,9 @@ class Break():
 
 
 def call_generator(env, operator1, operator2):
+    
     for i in range(NUMBER_OF_CALLS):
-        INTERARRIVAL_RATE = 6
         yield env.timeout(random.expovariate(1.0/INTERARRIVAL_RATE))
-        TAKE_RECORD_MEAN = 5
-        yield env.timeout(random.expovariate(1.0/TAKE_RECORD_MEAN))
         call = Call((i + 1), env, operator1, operator2)
 
 
@@ -156,12 +176,10 @@ if __name__ == "__main__":
     operator1 = simpy.Resource(env, capacity=1)
     operator2 = simpy.Resource(env, capacity=1)
     env.process(call_generator(env, operator1, operator2))
-    env.process(break_generator(env, operator1))
-    env.process(break_generator(env, operator2))
+    #env.process(break_generator(env, operator1))
+    #env.process(break_generator(env, operator2))
 
     try:
-        print("a")
         env.run()
     except simpy.Interrupt as interrupt:
-        print(interrupt)
         print('END OF THE SIMULATION')
