@@ -135,9 +135,9 @@ class Break():
 def call_generator(env, operator1, operator2):
     for i in range(NUMBER_OF_CALLS):
         INTERARRIVAL_RATE = 6
-        yield env.timeout(random.expovariate(INTERARRIVAL_RATE))
+        yield env.timeout(random.expovariate(1.0/INTERARRIVAL_RATE))
         TAKE_RECORD_MEAN = 5
-        yield env.timeout(random.expovariate(TAKE_RECORD_MEAN))
+        yield env.timeout(random.expovariate(1.0/TAKE_RECORD_MEAN))
         call = Call((i + 1), env, operator1, operator2)
 
 
@@ -160,6 +160,8 @@ if __name__ == "__main__":
     env.process(break_generator(env, operator2))
 
     try:
+        print("a")
         env.run()
     except simpy.Interrupt as interrupt:
+        print(interrupt)
         print('END OF THE SIMULATION')
