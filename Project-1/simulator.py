@@ -12,7 +12,7 @@ o Average number of customers leaving the system unsatisfied either due to
 incorrect routing or due to long waiting times.
 """
 
-
+END_TIME = 0
 SYSTEM_UTIL = 0
 OPERATORS_UTIL = 0
 AVG_TOTAL_WAITING = 0
@@ -21,9 +21,8 @@ MAX_TOTAL_SYSTEM_TIME = 0
 AVG_WAITING_PEOPLE = 0
 AVG_UNSATISFIED_PEOPLE = 0
 # --------
-NUMBER_OF_CALLS = 1000
+NUMBER_OF_CALLS = 10
 CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at the same time.
-END_TIME = 0
 
 INTERARRIVAL_RATE = 6
 TAKE_RECORD_MEAN = 5
@@ -85,29 +84,29 @@ class Call():
         TODO: Burada bütün call processi olacak.
         :return:
         """
-
-        # print("current calls:", Call.current_call)
         
         if Call.current_call >= CALL_CAPACITY:
             # Answering system is full, drop the call.
+            print("Call",self.id,"has dropped! (full cap.)")
             Call.total_call_fail += 1
             if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
-                yield self.env.process(self.end())
+                self.end()
             return
         
+
+        # Take Customer Info (Record)
         Call.current_call += 1
-
         yield env.timeout(random.expovariate(1.0/TAKE_RECORD_MEAN))
-
         Call.current_call -= 1
 
         operator_random = random.randint(0, 9)
         fault_random = random.randint(0, 9)
 
         if fault_random == 0: # %10
+            print("Call",self.id,"has dropped! (wrong routing)")
             Call.total_call_fail += 1
             if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
-                yield self.env.process(self.end())
+                self.end()
             return
         
         if operator_random < 3:  # 0-1-2 -- %30
@@ -117,11 +116,14 @@ class Call():
                 q_waiting = env.now - q_arrival
 
                 if q_waiting < 10:
-                    self.env.process(self.service(1))
+                    print("Call",self.id,"-> operator 1")
+                    yield self.env.process(self.service(1)) # Process'in bitişini beklemek için yield yapmamız gerekiyormuş
+                    return
                 else:
+                    print("Call",self.id,"couldn't get any service!")
                     # TODO: use global variable for renege time
                     # reneging
-                    pass
+                    return
         else:
             with operator2.request() as req:
                 q_arrival = env.now
@@ -129,31 +131,35 @@ class Call():
                 q_waiting = env.now - q_arrival
 
                 if q_waiting < 10:
-                    self.env.process(self.service(2))
+                    print("Call",self.id,"-> operator 2")
+                    yield self.env.process(self.service(2)) # Process'in bitişini beklemek için yield yapmamız gerekiyormuş
+                    return
                 else:
+                    print("Call",self.id,"couldn't get any service!")
                     # TODO: use global variable for renege time
                     # reneging
-                    pass
+                    return
 
-        Call.total_call_success += 1
-
-        if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
-            yield self.env.process(self.end())
 
     def service(self, operator_id:int):
         if operator_id == 1:
-            yield env.timeout(random.lognormvariate(12,6))
-            # log
+            yield env.timeout(random.lognormvariate(12,6))  # TODO: lognormvariate parametrelerini yanlış veriyoruz: https://moodle.boun.edu.tr/mod/forum/discuss.php?d=36256
+            print("Call",self.id,"has been served by operator 1")
+
         else:
             yield env.timeout(random.randint(1,7))
-            # uniform
+            print("Call",self.id,"has been served by operator 2")
+
+        Call.total_call_success += 1
+        if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
+            self.end()
+
 
     def end(self):
         global END_TIME
         END_TIME = self.env.now
         print(END_TIME)
-        self.action.interrupt()
-        yield self.env.timeout(0)
+        print('END OF THE SIMULATION')
 
 
 class Break():
@@ -176,14 +182,16 @@ def call_generator(env, operator1, operator2):
     
     for i in range(NUMBER_OF_CALLS):
         yield env.timeout(random.expovariate(1.0/INTERARRIVAL_RATE))
+        print("Incomig Call",i+1)
         call = Call((i + 1), env, operator1, operator2)
 
 
 def break_generator(env, operator):
-    rate = 1
+    rate = 8
     counter = 1
     while True:
-        yield env.timeout(random.expovariate(rate))  # poisson bir çeşit expovariate olarak ifade edilebiliyor olmalı
+        yield env.timeout(random.expovariate(1.0/rate))  # TODO: poisson bir çeşit expovariate olarak ifade edilebiliyor olmalı
+        print("An operator decided to take break!")
         operator_break = Break(counter, env, operator)
         counter += 1
 
@@ -196,8 +204,5 @@ if __name__ == "__main__":
     env.process(call_generator(env, operator1, operator2))
     #env.process(break_generator(env, operator1))
     #env.process(break_generator(env, operator2))
-
-    try:
-        env.run()
-    except simpy.Interrupt as interrupt:
-        print('END OF THE SIMULATION')
+    env.run()
+        
