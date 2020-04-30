@@ -27,6 +27,8 @@ CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at th
 
 INTERARRIVAL_RATE = 6
 TAKE_RECORD_MEAN = 5
+OPERATOR_BREAKS = [0, 0, 0]  # index 0 is empty all the time.
+MAX_Q_WAIT_TIME = 10
 
 """
 Arrivals:
@@ -72,8 +74,7 @@ class Call():
     def __init__(self, id, env, operator1, operator2):
         self.id = id
         self.env = env
-        self.operator1 = operator1
-        self.operator2 = operator2
+        self.operators = [None, operator1, operator2]  # index 0 is empty
         self.arrival_t = self.env.now
         self.action = env.process(self.call())
 
@@ -81,10 +82,9 @@ class Call():
 
         if Call.current_call >= CALL_CAPACITY:  # this might not be included in statistics (like fail calls)
             # Answering system is full, drop the call.
-            print("Call", self.id, "has dropped! (full cap.)")
+            print("Call{} has been dropped.(Capacity reached)".format(self.id))
             Call.total_call_fail += 1
-            if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
-                self.end()
+            yield env.process(self.check_end())
             return
 
         # Take Customer Info (Record)
@@ -96,102 +96,85 @@ class Call():
         fault_random = random.randint(0, 9)
 
         if fault_random == 0:  # %10
-            print("Call", self.id, "has dropped! (wrong routing)")
+            print("Call{} has been dropped.(Wrong routing)".format(self.id))
             Call.total_call_fail += 1
-            if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
-                self.end()
+            yield env.process(self.check_end())
             return
 
-        if operator_random < 3:  # 0-1-2 -- %30
-            with operator1.request() as req:
-                q_arrival = env.now
-                yield req
-                q_waiting = env.now - q_arrival
+        yield env.process(self.service(1 if operator_random < 3 else 2))
 
-                if q_waiting < 10:
-                    print("Call", self.id, "-> operator 1")
-                    yield self.env.process(
-                        self.service(1))  # Process'in bitişini beklemek için yield yapmamız gerekiyormuş
-                    return
-                else:
-                    print("Call", self.id, "couldn't get any service!")
-                    # TODO: use global variable for renege time
-                    # reneging
-                    return
-        else:
-            with operator2.request() as req:
-                q_arrival = env.now
-                yield req
-                q_waiting = env.now - q_arrival
+    def check_end(self):
+        if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
+            yield env.process(self.end())
 
-                if q_waiting < 10:
-                    print("Call", self.id, "-> operator 2")
-                    yield self.env.process(
-                        self.service(2))  # Process'in bitişini beklemek için yield yapmamız gerekiyormuş
-                    return
-                else:
-                    print("Call", self.id, "couldn't get any service!")
-                    # TODO: use global variable for renege time
-                    # reneging
-                    return
+    def service(self, operator_id):
+        with self.operators[operator_id].request() as req:
+            q_arrival = env.now
+            yield req
+            q_waiting = env.now - q_arrival
 
-    def service(self, operator_id: int):
+            if q_waiting < MAX_Q_WAIT_TIME:
+                print("Call{} -> operator {}".format(self.id, operator_id))
+                yield self.env.process(self.serve(operator_id))
+            else:
+                print("Call{} has been dropped.(Waited too much in queue)".format(self.id))
+                Call.total_call_fail += 1
+
+    def serve(self, operator_id):
         if operator_id == 1:
-            # Calculate mu and sigma of underlying lognormal distribution
-            phi = (6 ** 2 + 12 ** 2) ** 0.5
-            m = np.log(12 ** 2 / phi)
-            sig = (np.log(phi ** 2 / 12 ** 2)) ** 0.5
+            # Calculate mu and sigma for lognormal distribution mean = 12, std = 6
+            mean, std = 12, 6
+            m, sig = self.get_lognormal_values(mean, std)
             yield env.timeout(random.lognormvariate(sigma=sig, mu=m))
-            print("Call", self.id, "has been served by operator 1")
 
         else:
             rand_time = random.uniform(1, 7)
             yield env.timeout(rand_time)
-            print("Call", self.id, "has been served by operator 2")
 
+        print("Call{} has been served by operator {}".format(self.id, operator_id))
         Call.total_call_success += 1
-        if Call.total_call_success + Call.total_call_fail == NUMBER_OF_CALLS:  # termination
-            self.end()
+
+        yield env.process(self.check_end())
+        yield env.process(self.check_break(operator_id))
+
+    def get_lognormal_values(self, mean, std):
+        phi = (std ** 2 + mean ** 2) ** 0.5
+        mu = np.log(mean ** 2 / phi)
+        sigma = (np.log(phi ** 2 / mean ** 2)) ** 0.5
+        return mu, sigma
+
+    def check_break(self, operator_id):
+        q_length = len(self.operators[operator_id].queue)
+
+        if OPERATOR_BREAKS[operator_id] > 0 and q_length == 0:
+            OPERATOR_BREAKS[operator_id] -= 1
+            print("Operator{} leaves for a break".format(operator_id))
+            yield env.timeout(3)
+            print("Operator{} returned from break".format(operator_id))
+            if OPERATOR_BREAKS[operator_id] != 0:  # might take multiple breaks back to back.
+                yield env.process(self.check_break(operator_id))
+
+        return None
 
     def end(self):
         global END_TIME
         END_TIME = self.env.now
-        print(END_TIME)
-        print('END OF THE SIMULATION')
-
-
-class Break():
-
-    def __init__(self, id, env, operator):
-        self.id = id
-        self.env = env
-        self.operator = operator
-        self.starting_t = self.env.now
-        self.action = env.process(self.go_break())
-
-    def go_break(self):
-        break_time = 3  # constant
-        with self.operator.request() as req:
-            yield req  # Wait for access
-            yield env.timeout(break_time)
+        self.action.interrupt()
+        yield self.env.timeout(0)
 
 
 def call_generator(env, operator1, operator2):
     for i in range(NUMBER_OF_CALLS):
         yield env.timeout(random.expovariate(1.0 / INTERARRIVAL_RATE))
-        print("Incomig Call", i + 1)
-        call = Call((i + 1), env, operator1, operator2)
+        print("Incomig Call{}".format(i))
+        Call((i + 1), env, operator1, operator2)
 
 
-def break_generator(env, operator):
-    rate = 60 # 1 in every 60 mins
-    counter = 1
+def break_generator(env, operator_id):
+    rate = 60  # 1 in every 60 minutes
     while True:
-        yield env.timeout(
-            random.expovariate(1.0 / rate))  # TODO: poisson bir çeşit expovariate olarak ifade edilebiliyor olmalı
-        print("An operator decided to take break!")
-        operator_break = Break(counter, env, operator)
-        counter += 1
+        yield env.timeout(random.expovariate(1.0 / rate))
+        OPERATOR_BREAKS[operator_id] += 1
 
 
 if __name__ == "__main__":
@@ -199,6 +182,10 @@ if __name__ == "__main__":
     operator1 = simpy.Resource(env, capacity=1)
     operator2 = simpy.Resource(env, capacity=1)
     env.process(call_generator(env, operator1, operator2))
-    # env.process(break_generator(env, operator1))
-    # env.process(break_generator(env, operator2))
-    env.run()
+    env.process(break_generator(env, 1))
+    env.process(break_generator(env, 2))
+
+    try:
+        env.run()
+    except simpy.Interrupt as interrupt:
+        print("END")
