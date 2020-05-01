@@ -25,7 +25,8 @@ AVG_UNSATISFIED_PEOPLE = 0
 NUMBER_OF_CALLS = 1000
 CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at the same time.
 
-INTERARRIVAL_RATE = 6
+BREAK_TIME = 3
+CALL_INTERARRIVAL_RATE = 6
 TAKE_RECORD_MEAN = 5
 OPERATOR_BREAKS = [0, 0, 0]  # index 0 is empty all the time.
 MAX_Q_WAIT_TIME = 10
@@ -135,26 +136,12 @@ class Call():
         Call.total_call_success += 1
 
         yield env.process(self.check_end())
-        yield env.process(self.check_break(operator_id))
 
     def get_lognormal_values(self, mean, std):
         phi = (std ** 2 + mean ** 2) ** 0.5
         mu = np.log(mean ** 2 / phi)
         sigma = (np.log(phi ** 2 / mean ** 2)) ** 0.5
         return mu, sigma
-
-    def check_break(self, operator_id):
-        q_length = len(self.operators[operator_id].queue)
-
-        if OPERATOR_BREAKS[operator_id] > 0 and q_length == 0:
-            OPERATOR_BREAKS[operator_id] -= 1
-            print("Operator{} leaves for a break".format(operator_id))
-            yield env.timeout(3)
-            print("Operator{} returned from break".format(operator_id))
-            if OPERATOR_BREAKS[operator_id] != 0:  # might take multiple breaks back to back.
-                yield env.process(self.check_break(operator_id))
-
-        return None
 
     def end(self):
         global END_TIME
@@ -163,18 +150,46 @@ class Call():
         yield self.env.timeout(0)
 
 
+class Break():
+    def __init__(self, env, operator, operator_id):
+        self.env = env
+        self.operator = operator
+        self.operator_id = operator_id
+        self.starting_t = self.env.now
+        self.action = env.process(self.go_break())
+
+    def go_break(self):
+        go_back = False
+        with self.operator.request() as req:
+            yield req  # Wait for access
+            if len(self.operator.queue) > OPERATOR_BREAKS[self.operator_id]:
+                # go back to the queue
+                go_back = True
+            else:
+                print("Operator{} leaves for a break. Time:{}".format(self.operator_id, env.now))
+                OPERATOR_BREAKS[self.operator_id] -= 1
+                yield env.timeout(BREAK_TIME)
+                print("Operator{} returned from break. Time:{}".format(self.operator_id, env.now))
+
+        if go_back:
+            print("Operator{} couldn't leave because queue is not empty".format(self.operator_id))
+            yield env.process(self.go_break())
+
+
 def call_generator(env, operator1, operator2):
     for i in range(NUMBER_OF_CALLS):
-        yield env.timeout(random.expovariate(1.0 / INTERARRIVAL_RATE))
+        yield env.timeout(random.expovariate(1.0 / CALL_INTERARRIVAL_RATE))
         print("Incomig Call{}".format(i))
         Call((i + 1), env, operator1, operator2)
 
 
-def break_generator(env, operator_id):
+def break_generator(env, operator, operator_id):
     rate = 60  # 1 in every 60 minutes
     while True:
         yield env.timeout(random.expovariate(1.0 / rate))
         OPERATOR_BREAKS[operator_id] += 1
+        print("Operator{} decided to take a break. Time:{}".format(operator_id, env.now))
+        Break(env, operator, operator_id)
 
 
 if __name__ == "__main__":
@@ -182,8 +197,8 @@ if __name__ == "__main__":
     operator1 = simpy.Resource(env, capacity=1)
     operator2 = simpy.Resource(env, capacity=1)
     env.process(call_generator(env, operator1, operator2))
-    env.process(break_generator(env, 1))
-    env.process(break_generator(env, 2))
+    env.process(break_generator(env, operator1, 1))
+    env.process(break_generator(env, operator2, 2))
 
     try:
         env.run()
