@@ -1,28 +1,26 @@
 import simpy
 import random
 import numpy as np
+
 random.seed(1)
 np.random.seed(1)
 
 """
 Collect and report statistics on:
 o Utilization of the answering system.
-o Utilization of the operators,
-o Average Total Waiting Time
++ Utilization of the operators, ++ 
++ Average Total Waiting Time
 o Maximum Total Waiting Time to Total System Time Ratio,
 o Average number of people waiting to be served by each operator.
-o Average number of customers leaving the system unsatisfied either due to
-incorrect routing or due to long waiting times.
++ Average number of customers leaving the system unsatisfied either due to
+incorrect routing or due to long waiting times. ++
 """
 
 END_TIME = 0
-SYSTEM_UTIL = 0
-OPERATORS_UTIL = 0
-AVG_TOTAL_WAITING = 0
-MAX_TOTAL_WAITING = 0
-MAX_TOTAL_SYSTEM_TIME = 0
-AVG_WAITING_PEOPLE = 0
-AVG_UNSATISFIED_PEOPLE = 0
+OPERATOR_UTIL = [0, 0, 0]
+UNSATISFIED_PEOPLE = 0
+TOTAL_Q_WAITING_TIME = 0
+ANSWERING_UTIL = 0
 # --------
 NUMBER_OF_CALLS = 1000
 CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at the same time.
@@ -49,7 +47,8 @@ Routing:
 0.7 - Operator 2
 After
 0.1 chance of misrouting 
-A caller that is routed to the wrong operator hangs up immediately.Unsatisfied 
+A caller that is routed to the wrong operator hangs up immediately. 
+-- Unsatisfaction ++ --
 ---
 Waiting Q: 
 FCFS 
@@ -63,7 +62,7 @@ Op2 - uniformly distributed between 1 and 7 minutes.
 ---
 Operator Breaks:
 When an operator decides to take a break, he/she waits until completing all the customers already waiting
-for her/him. -- Until q is empty or until surving the last person at q ??? ---
+for her/him. -- Until q is empty  ---
 If new customers arrive during operators break, they wait in the q
 The number of breaks an operator wishes to take during an 8-hour shift is known to be
 distributed according to a Poisson distribution with a mean of 8 breaks per shift. -- 1 per hour--
@@ -74,6 +73,7 @@ class Call:
     current_call = 0
     total_call_success = 0
     total_call_fail = 0
+    total_operator_time = [0, 0]
 
     def __init__(self, id, env):
         self.id = id
@@ -92,6 +92,7 @@ class Call:
 
         # Take Customer Info (Record)
         Call.current_call += 1
+
         yield env.timeout(random.expovariate(1.0 / TAKE_RECORD_MEAN))
         Call.current_call -= 1
 
@@ -111,15 +112,18 @@ class Call:
             yield env.process(self.end())
 
     def service(self, operator_id):
+        global TOTAL_Q_WAITING_TIME
         with OPERATORS[operator_id].request() as req:
             q_arrival = env.now
             yield req
             q_waiting = env.now - q_arrival
 
             if q_waiting < MAX_Q_WAIT_TIME:
+                TOTAL_Q_WAITING_TIME += q_waiting
                 print("Call{} -> operator {}".format(self.id, operator_id))
                 yield self.env.process(self.serve(operator_id))
             else:
+                TOTAL_Q_WAITING_TIME += MAX_Q_WAIT_TIME
                 print("Call{} has been dropped.(Waited too much in queue)".format(self.id))
                 Call.total_call_fail += 1
 
@@ -128,11 +132,14 @@ class Call:
             # Calculate mu and sigma for lognormal distribution mean = 12, std = 6
             mean, std = 12, 6
             m, sig = self.get_lognormal_values(mean, std)
-            yield env.timeout(random.lognormvariate(sigma=sig, mu=m))
+            time = random.lognormvariate(sigma=sig, mu=m)
+            OPERATOR_UTIL[1] += time
+            yield env.timeout(time)
 
         else:
-            rand_time = random.uniform(1, 7)
-            yield env.timeout(rand_time)
+            time = random.uniform(1, 7)
+            OPERATOR_UTIL[2] += time
+            yield env.timeout(time)
 
         print("Call{} has been served by operator {}".format(self.id, operator_id))
         Call.total_call_success += 1
@@ -146,8 +153,10 @@ class Call:
         return mu, sigma
 
     def end(self):
-        global END_TIME
+        global END_TIME, UNSATISFIED_PEOPLE
+
         END_TIME = self.env.now
+        UNSATISFIED_PEOPLE = Call.total_call_fail
         self.action.interrupt()
         yield self.env.timeout(0)
 
@@ -216,6 +225,13 @@ def shift_generator(env):
         yield env.timeout(shift_duration)
 
 
+def print_statistics():
+    print("OPERATOR1 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[1] / END_TIME * 100)))
+    print("OPERATOR2 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[2] / END_TIME * 100)))
+    print("AVERAGE QUEUE WAITING TIME: {} minutes".format(TOTAL_Q_WAITING_TIME / NUMBER_OF_CALLS))
+    print("UNSATISFACTION RATE: %{}".format((UNSATISFIED_PEOPLE / float(NUMBER_OF_CALLS) * 100)))
+
+
 if __name__ == "__main__":
     env = simpy.Environment()
     operator1 = simpy.Resource(env, capacity=1)
@@ -230,3 +246,6 @@ if __name__ == "__main__":
         env.run()
     except simpy.Interrupt as interrupt:
         print("SIMULATION ENDED")
+        print("END TIME: {}".format(END_TIME))
+
+    print_statistics()
