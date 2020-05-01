@@ -1,6 +1,8 @@
 import simpy
 import random
 import numpy as np
+random.seed(1)
+np.random.seed(1)
 
 """
 Collect and report statistics on:
@@ -29,6 +31,8 @@ BREAK_TIME = 3
 CALL_INTERARRIVAL_RATE = 6
 TAKE_RECORD_MEAN = 5
 OPERATOR_BREAKS = [0, 0, 0]  # index 0 is empty all the time.
+OPERATORS = [None, None, None]
+BREAKS = []
 MAX_Q_WAIT_TIME = 10
 
 """
@@ -45,8 +49,7 @@ Routing:
 0.7 - Operator 2
 After
 0.1 chance of misrouting 
-A caller that is routed to the wrong operator hangs up immediately. 
--- Burada unsatisfied olarak ayrıldı ve q'ya dahil olmadı sanırım. --
+A caller that is routed to the wrong operator hangs up immediately.Unsatisfied 
 ---
 Waiting Q: 
 FCFS 
@@ -67,21 +70,20 @@ distributed according to a Poisson distribution with a mean of 8 breaks per shif
 """
 
 
-class Call():
+class Call:
     current_call = 0
     total_call_success = 0
     total_call_fail = 0
 
-    def __init__(self, id, env, operator1, operator2):
+    def __init__(self, id, env):
         self.id = id
         self.env = env
-        self.operators = [None, operator1, operator2]  # index 0 is empty
         self.arrival_t = self.env.now
         self.action = env.process(self.call())
 
     def call(self):
 
-        if Call.current_call >= CALL_CAPACITY:  # this might not be included in statistics (like fail calls)
+        if Call.current_call >= CALL_CAPACITY:
             # Answering system is full, drop the call.
             print("Call{} has been dropped.(Capacity reached)".format(self.id))
             Call.total_call_fail += 1
@@ -109,7 +111,7 @@ class Call():
             yield env.process(self.end())
 
     def service(self, operator_id):
-        with self.operators[operator_id].request() as req:
+        with OPERATORS[operator_id].request() as req:
             q_arrival = env.now
             yield req
             q_waiting = env.now - q_arrival
@@ -150,19 +152,24 @@ class Call():
         yield self.env.timeout(0)
 
 
-class Break():
-    def __init__(self, env, operator, operator_id):
+class Break:
+    def __init__(self, env, operator_id):
         self.env = env
-        self.operator = operator
+        self.operator = OPERATORS[operator_id]
         self.operator_id = operator_id
         self.starting_t = self.env.now
         self.action = env.process(self.go_break())
 
     def go_break(self):
+        global BREAKS
         go_back = False
         with self.operator.request() as req:
             yield req  # Wait for access
-            if len(self.operator.queue) > OPERATOR_BREAKS[self.operator_id]:
+
+            if self not in BREAKS:  # breaks from previous shift should not be processed.
+                return env.timeout(0)
+
+            if len(self.operator.queue) >= OPERATOR_BREAKS[self.operator_id]:  # >= or > ? Seems like >=
                 # go back to the queue
                 go_back = True
             else:
@@ -175,32 +182,51 @@ class Break():
             print("Operator{} couldn't leave because queue is not empty".format(self.operator_id))
             yield env.process(self.go_break())
 
+        # remove self from breaks
+        for i in range(len(BREAKS)):
+            if BREAKS[i] == self:
+                # break is done, removing itself from the list
+                BREAKS.pop(i)
+                break
 
-def call_generator(env, operator1, operator2):
+
+def call_generator(env):
     for i in range(NUMBER_OF_CALLS):
         yield env.timeout(random.expovariate(1.0 / CALL_INTERARRIVAL_RATE))
-        print("Incomig Call{}".format(i))
-        Call((i + 1), env, operator1, operator2)
+        print("Incoming Call{}".format(i + 1))
+        Call((i + 1), env)
 
 
-def break_generator(env, operator, operator_id):
+def break_generator(env, operator_id):
     rate = 60  # 1 in every 60 minutes
     while True:
         yield env.timeout(random.expovariate(1.0 / rate))
         OPERATOR_BREAKS[operator_id] += 1
         print("Operator{} decided to take a break. Time:{}".format(operator_id, env.now))
-        Break(env, operator, operator_id)
+        BREAKS.append(Break(env, operator_id))
+
+
+def shift_generator(env):
+    global OPERATOR_BREAKS, break1, break2, BREAKS
+    shift_duration = 480  # 1 in every 60 minutes
+    while True:
+        print("A NEW SHIFT STARTS")
+        OPERATOR_BREAKS = [0, 0, 0]
+        BREAKS = []
+        yield env.timeout(shift_duration)
 
 
 if __name__ == "__main__":
     env = simpy.Environment()
     operator1 = simpy.Resource(env, capacity=1)
     operator2 = simpy.Resource(env, capacity=1)
-    env.process(call_generator(env, operator1, operator2))
-    env.process(break_generator(env, operator1, 1))
-    env.process(break_generator(env, operator2, 2))
+    OPERATORS[1], OPERATORS[2] = operator1, operator2
+    env.process(call_generator(env))
+    env.process(break_generator(env, 1))
+    env.process(break_generator(env, 2))
+    env.process(shift_generator(env))
 
     try:
         env.run()
     except simpy.Interrupt as interrupt:
-        print("END")
+        print("SIMULATION ENDED")
