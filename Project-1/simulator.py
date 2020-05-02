@@ -7,10 +7,10 @@ np.random.seed(1)
 
 """
 Collect and report statistics on:
-o Utilization of the answering system.
++ Utilization of the answering system.
 + Utilization of the operators, ++ 
 + Average Total Waiting Time
-o Maximum Total Waiting Time to Total System Time Ratio,
++ Maximum Total Waiting Time to Total System Time Ratio,
 + Average number of people waiting to be served by each operator.
 + Average number of customers leaving the system unsatisfied either due to
 incorrect routing or due to long waiting times. ++
@@ -23,7 +23,7 @@ TOTAL_Q_WAITING_TIME = [0, 0, 0]
 ANSWERING_UTIL = 0
 # --------
 NUMBER_OF_CALLS = 1000
-CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at the same time.
+CALL_CAPACITY = 1  # Call capacity that auto answering system can handle at the same time.
 
 BREAK_TIME = 3
 CALL_INTERARRIVAL_RATE = 6
@@ -32,6 +32,7 @@ OPERATOR_BREAKS = [0, 0, 0]  # index 0 is empty all the time.
 OPERATORS = [None, None, None]
 BREAKS = []
 MAX_Q_WAIT_TIME = 10
+TOTAL_SYSTEM_TIME = 0
 
 """
 Arrivals:
@@ -82,18 +83,21 @@ class Call:
         self.action = env.process(self.call())
 
     def call(self):
+        global ANSWERING_UTIL, TOTAL_SYSTEM_TIME
 
         if Call.current_call >= CALL_CAPACITY:
             # Answering system is full, drop the call.
             print("Call{} has been dropped.(Capacity reached)".format(self.id))
             Call.total_call_fail += 1
+            TOTAL_SYSTEM_TIME += self.env.now - self.arrival_t
             yield env.process(self.check_end())
             return
 
         # Take Customer Info (Record)
         Call.current_call += 1
-
-        yield env.timeout(random.expovariate(1.0 / TAKE_RECORD_MEAN))
+        record_time = random.expovariate(1.0 / TAKE_RECORD_MEAN)
+        ANSWERING_UTIL += record_time
+        yield env.timeout(record_time)
         Call.current_call -= 1
 
         operator_random = random.randint(0, 9)
@@ -103,6 +107,7 @@ class Call:
         if fault_random == 0:  # %10
             print("Call{} has been dropped.(Wrong routing)".format(self.id))
             Call.total_call_fail += 1
+            TOTAL_SYSTEM_TIME += self.env.now - self.arrival_t
             yield env.process(self.check_end())
             return
 
@@ -113,7 +118,7 @@ class Call:
             yield env.process(self.end())
 
     def service(self, operator_id):
-        global TOTAL_Q_WAITING_TIME
+        global TOTAL_Q_WAITING_TIME, TOTAL_SYSTEM_TIME
         with OPERATORS[operator_id].request() as req:
             q_arrival = env.now
             yield req
@@ -125,10 +130,12 @@ class Call:
                 yield self.env.process(self.serve(operator_id))
             else:
                 TOTAL_Q_WAITING_TIME[operator_id] += MAX_Q_WAIT_TIME # can not wait more than max q wait time
+                TOTAL_SYSTEM_TIME += q_arrival + MAX_Q_WAIT_TIME - self.arrival_t
                 print("Call{} has been dropped.(Waited too much in queue)".format(self.id))
                 Call.total_call_fail += 1
 
     def serve(self, operator_id):
+        global TOTAL_SYSTEM_TIME
         if operator_id == 1:
             # Calculate mu and sigma for lognormal distribution mean = 12, std = 6
             mean, std = 12, 6
@@ -143,6 +150,7 @@ class Call:
             yield env.timeout(time)
 
         print("Call{} has been served by operator {}".format(self.id, operator_id))
+        TOTAL_SYSTEM_TIME += self.env.now - self.arrival_t
         Call.total_call_success += 1
 
         yield env.process(self.check_end())
@@ -227,9 +235,11 @@ def shift_generator(env):
 
 
 def print_statistics():
+    print("ANSWERING SYSTEM UTILIZATION RATE: %{}".format((ANSWERING_UTIL / (CALL_CAPACITY * END_TIME) * 100)))
     print("OPERATOR1 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[1] / END_TIME * 100)))
     print("OPERATOR2 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[2] / END_TIME * 100)))
     print("AVERAGE QUEUE WAITING TIME: {} minutes".format(sum(TOTAL_Q_WAITING_TIME) / NUMBER_OF_CALLS))
+    print("MAXIMUM TOTAL WAITING TIME TO TOTAL SYSTEM TIME RATIO: %{}".format((sum(TOTAL_Q_WAITING_TIME) / TOTAL_SYSTEM_TIME * 100)))
     print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR1: {}".format(TOTAL_Q_WAITING_TIME[1] / END_TIME))
     print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR2: {}".format(TOTAL_Q_WAITING_TIME[2] / END_TIME))
     print("UNSATISFACTION RATE: %{}".format((UNSATISFIED_PEOPLE / float(NUMBER_OF_CALLS) * 100)))
