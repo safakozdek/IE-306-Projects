@@ -11,7 +11,7 @@ o Utilization of the answering system.
 + Utilization of the operators, ++ 
 + Average Total Waiting Time
 o Maximum Total Waiting Time to Total System Time Ratio,
-o Average number of people waiting to be served by each operator.
++ Average number of people waiting to be served by each operator.
 + Average number of customers leaving the system unsatisfied either due to
 incorrect routing or due to long waiting times. ++
 """
@@ -19,7 +19,7 @@ incorrect routing or due to long waiting times. ++
 END_TIME = 0
 OPERATOR_UTIL = [0, 0, 0]
 UNSATISFIED_PEOPLE = 0
-TOTAL_Q_WAITING_TIME = 0
+TOTAL_Q_WAITING_TIME = [0, 0, 0]
 ANSWERING_UTIL = 0
 # --------
 NUMBER_OF_CALLS = 1000
@@ -99,6 +99,7 @@ class Call:
         operator_random = random.randint(0, 9)
         fault_random = random.randint(0, 9)
 
+        # Routing Fault
         if fault_random == 0:  # %10
             print("Call{} has been dropped.(Wrong routing)".format(self.id))
             Call.total_call_fail += 1
@@ -119,11 +120,11 @@ class Call:
             q_waiting = env.now - q_arrival
 
             if q_waiting < MAX_Q_WAIT_TIME:
-                TOTAL_Q_WAITING_TIME += q_waiting
+                TOTAL_Q_WAITING_TIME[operator_id] += q_waiting
                 print("Call{} -> operator {}".format(self.id, operator_id))
                 yield self.env.process(self.serve(operator_id))
             else:
-                TOTAL_Q_WAITING_TIME += MAX_Q_WAIT_TIME
+                TOTAL_Q_WAITING_TIME[operator_id] += MAX_Q_WAIT_TIME # can not wait more than max q wait time
                 print("Call{} has been dropped.(Waited too much in queue)".format(self.id))
                 Call.total_call_fail += 1
 
@@ -228,7 +229,9 @@ def shift_generator(env):
 def print_statistics():
     print("OPERATOR1 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[1] / END_TIME * 100)))
     print("OPERATOR2 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[2] / END_TIME * 100)))
-    print("AVERAGE QUEUE WAITING TIME: {} minutes".format(TOTAL_Q_WAITING_TIME / NUMBER_OF_CALLS))
+    print("AVERAGE QUEUE WAITING TIME: {} minutes".format(sum(TOTAL_Q_WAITING_TIME) / NUMBER_OF_CALLS))
+    print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR1: {}".format(TOTAL_Q_WAITING_TIME[1] / END_TIME))
+    print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR2: {}".format(TOTAL_Q_WAITING_TIME[2] / END_TIME))
     print("UNSATISFACTION RATE: %{}".format((UNSATISFIED_PEOPLE / float(NUMBER_OF_CALLS) * 100)))
 
 
