@@ -2,8 +2,10 @@ import simpy
 import random
 import numpy as np
 
-random.seed(1)
-np.random.seed(1)
+
+RANDOM_SEED = 3
+random.seed(RANDOM_SEED)
+
 
 """
 Collect and report statistics on:
@@ -22,8 +24,8 @@ UNSATISFIED_PEOPLE = 0
 TOTAL_Q_WAITING_TIME = [0, 0, 0]
 ANSWERING_UTIL = 0
 # --------
-NUMBER_OF_CALLS = 1000
-CALL_CAPACITY = 1  # Call capacity that auto answering system can handle at the same time.
+NUMBER_OF_CALLS = 5000
+CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at the same time.
 
 BREAK_TIME = 3
 CALL_INTERARRIVAL_RATE = 6
@@ -133,6 +135,7 @@ class Call:
                 TOTAL_SYSTEM_TIME += q_arrival + MAX_Q_WAIT_TIME - self.arrival_t
                 print("Call{} has been dropped.(Waited too much in queue)".format(self.id))
                 Call.total_call_fail += 1
+                yield env.process(self.check_end())
 
     def serve(self, operator_id):
         global TOTAL_SYSTEM_TIME
@@ -166,7 +169,7 @@ class Call:
 
         END_TIME = self.env.now
         UNSATISFIED_PEOPLE = Call.total_call_fail
-        self.action.interrupt()
+        self.action.interrupt()  # causes simulation to end
         yield self.env.timeout(0)
 
 
@@ -225,8 +228,8 @@ def break_generator(env, operator_id):
 
 
 def shift_generator(env):
-    global OPERATOR_BREAKS, break1, break2, BREAKS
-    shift_duration = 480  # 1 in every 60 minutes
+    global OPERATOR_BREAKS, BREAKS
+    shift_duration = 480
     while True:
         print("A NEW SHIFT STARTS")
         OPERATOR_BREAKS = [0, 0, 0]
@@ -235,14 +238,16 @@ def shift_generator(env):
 
 
 def print_statistics():
-    print("ANSWERING SYSTEM UTILIZATION RATE: %{}".format((ANSWERING_UTIL / (CALL_CAPACITY * END_TIME) * 100)))
-    print("OPERATOR1 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[1] / END_TIME * 100)))
-    print("OPERATOR2 UTILIZATION RATE: %{}".format((OPERATOR_UTIL[2] / END_TIME * 100)))
-    print("AVERAGE QUEUE WAITING TIME: {} minutes".format(sum(TOTAL_Q_WAITING_TIME) / NUMBER_OF_CALLS))
-    print("MAXIMUM TOTAL WAITING TIME TO TOTAL SYSTEM TIME RATIO: %{}".format((sum(TOTAL_Q_WAITING_TIME) / TOTAL_SYSTEM_TIME * 100)))
-    print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR1: {}".format(TOTAL_Q_WAITING_TIME[1] / END_TIME))
-    print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR2: {}".format(TOTAL_Q_WAITING_TIME[2] / END_TIME))
-    print("UNSATISFACTION RATE: %{}".format((UNSATISFIED_PEOPLE / float(NUMBER_OF_CALLS) * 100)))
+    print("ANSWERING SYSTEM UTILIZATION RATE: %{}".format(round(ANSWERING_UTIL / (CALL_CAPACITY * END_TIME) * 100, 2)))
+    print("OPERATOR 1 UTILIZATION RATE: %{}".format(round(OPERATOR_UTIL[1] / END_TIME * 100, 1)))
+    print("OPERATOR 2 UTILIZATION RATE: %{}".format(round(OPERATOR_UTIL[2] / END_TIME * 100, 1)))
+    print("AVERAGE QUEUE WAITING TIME: {} minutes".format(round(sum(TOTAL_Q_WAITING_TIME) / NUMBER_OF_CALLS, 2)))
+    print("MAXIMUM TOTAL WAITING TIME TO TOTAL SYSTEM TIME RATIO: %{}".format(
+        round(sum(TOTAL_Q_WAITING_TIME) / TOTAL_SYSTEM_TIME * 100, 1)))
+    print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR1: {}".format(round(TOTAL_Q_WAITING_TIME[1] / END_TIME, 2)))
+    print("AVERAGE # OF PEOPLE WAITING FOR OPERATOR2: {}".format(round(TOTAL_Q_WAITING_TIME[2] / END_TIME, 2)))
+    print("UNSATISFIED RATE: %{}".format(round(UNSATISFIED_PEOPLE / float(NUMBER_OF_CALLS) * 100, 1)))
+    print("TOTAL CALLS:{}  RANDOM SEED:{}".format(NUMBER_OF_CALLS, RANDOM_SEED))
 
 
 if __name__ == "__main__":
