@@ -24,7 +24,7 @@ UNSATISFIED_PEOPLE = 0
 TOTAL_Q_WAITING_TIME = [0, 0, 0]
 ANSWERING_UTIL = 0
 # --------
-NUMBER_OF_CALLS = 1000
+NUMBER_OF_CALLS = 5000
 CALL_CAPACITY = 100  # Call capacity that auto answering system can handle at the same time.
 
 BREAK_TIME = 3
@@ -135,6 +135,7 @@ class Call:
                 TOTAL_SYSTEM_TIME += q_arrival + MAX_Q_WAIT_TIME - self.arrival_t
                 print("Call{} has been dropped.(Waited too much in queue)".format(self.id))
                 Call.total_call_fail += 1
+                yield env.process(self.check_end())
 
     def serve(self, operator_id):
         global TOTAL_SYSTEM_TIME
