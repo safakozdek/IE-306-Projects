@@ -15,20 +15,44 @@ day2_stats <- c(mean(day2), std_error(day2), sd(day2), median(day2), min(day2), 
 day1_hist <- hist(day1, breaks=seq(0,ceiling(day1_stats[6])+10,by=10))
 day2_hist <- hist(day2, breaks=seq(0,ceiling(day2_stats[6])+10,by=10))
 
+print("Day 1 Stats")
+print(day1_stats)
+
+print("Day 2 Stats")
+print(day2_stats)
 
 # Chi Square Test for day 1
 observed <- day1_hist$counts
 expected <- vector(,length(observed))
 
 index <- 1
-for (i in seq(10,length(observed)*10,10)){
+for (i in seq(10, length(observed)*10,10)){
     expected[index] <- pexp_interval(i-10, i, 1/day1_stats[1])
     index <- index+1
 }
 expected <- expected*day1_stats[8]
+
 chisq_stat <- sum((observed-expected)**2/expected)
-p_value = 1-pchisq(chisq_stat,df=length(expected)-2)
+p_value = 1-pchisq(chisq_stat, df=length(expected)-2)
 
+print("Chi-Square Test for Day 1")
+print(chisq_stat)
+print(p_value)
 
+# Chi Square Test for day 2
+observed <- day2_hist$counts
+expected <- vector(,length(observed))
+
+index <- 1
+for (i in seq(10, length(observed)*10,10)){
+    expected[index] <- pexp_interval(i-10, i, 1/day2_stats[1])
+    index <- index+1
+}
+expected <- expected*day2_stats[8]
+
+chisq_stat <- sum((observed-expected)**2/expected)
+p_value = 1-pchisq(chisq_stat, df=length(expected)-2)
+
+print("Chi-Square Test for Day 2")
 print(chisq_stat)
 print(p_value)
