@@ -21,7 +21,10 @@ print(day1_stats)
 print("Day 2 Stats")
 print(day2_stats)
 
-# Chi Square Test for day 1
+print("#######################################################")
+
+print("Chi-Square Test for Day 1")
+
 observed <- day1_hist$counts
 expected <- vector(,length(observed))
 
@@ -35,11 +38,26 @@ expected <- expected*day1_stats[8]
 chisq_stat <- sum((observed-expected)**2/expected)
 p_value = 1-pchisq(chisq_stat, df=length(expected)-2)
 
-print("Chi-Square Test for Day 1")
-print(chisq_stat)
-print(p_value)
+paste0("Chi-square statistics for day 1: ", chisq_stat)
+paste0("P-value: ", p_value)
 
-# Chi Square Test for day 2
+print("#######################################################")
+
+print("Chi-Square Test for Day 1 With Built-in Function")
+
+observed <- day1_hist$counts
+prob.exp <- dexp(seq(0, length(observed)*10-1,10), rate=1/day1_stats[1])
+# Get the statisctic only, because default dof used in calculation of p-value is wrong
+chisq_stat <- chisq.test(observed, p=prob.exp, rescale.p = TRUE)$statistic 
+p_value = 1-pchisq(chisq_stat, df=length(expected)-2)
+
+paste0("Chi-square statistics for day 1: ", chisq_stat)
+paste0("P-value: ", p_value)
+
+print("#######################################################")
+
+print("Chi-Square Test for Day 2")
+
 observed <- day2_hist$counts
 expected <- vector(,length(observed))
 
@@ -53,6 +71,21 @@ expected <- expected*day2_stats[8]
 chisq_stat <- sum((observed-expected)**2/expected)
 p_value = 1-pchisq(chisq_stat, df=length(expected)-2)
 
-print("Chi-Square Test for Day 2")
-print(chisq_stat)
-print(p_value)
+paste0("Chi-square statistics for day 2: ", chisq_stat)
+paste0("P-value: ", p_value)
+
+print("#######################################################")
+
+print("Chi-Square Test for Day 2 With Built-in Function")
+
+observed <- day2_hist$counts
+prob.exp <- dexp(seq(0, length(observed)*10-1,10), rate=1/day2_stats[1])
+# Get the statisctic only, because default dof used in calculation of p-value is wrong
+chisq_stat <- chisq.test(observed, p=prob.exp, rescale.p = TRUE)$statistic 
+p_value = 1-pchisq(chisq_stat, df=length(expected)-2)
+
+paste0("Chi-square statistics for day 2: ", chisq_stat)
+paste0("P-value: ", p_value)
+
+
+
